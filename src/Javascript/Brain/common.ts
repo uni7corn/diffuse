@@ -4,7 +4,7 @@
 
 
 import * as crypto from "../crypto"
-import * as db from "../indexed-db"
+import { db } from "../common"
 
 
 export const SECRET_KEY_LOCATION = "SECRET_KEY"
@@ -13,7 +13,7 @@ export const SECRET_KEY_LOCATION = "SECRET_KEY"
 // 🔱
 
 
-export function isLocalHost(url) {
+export function isLocalHost(url: string) {
   return (
     url.startsWith("localhost") ||
     url.startsWith("localhost") ||
@@ -23,7 +23,7 @@ export function isLocalHost(url) {
 }
 
 
-export function parseJsonIfNeeded(a) {
+export function parseJsonIfNeeded(a: unknown) {
   if (typeof a === "string") return JSON.parse(a)
   return a
 }
@@ -40,7 +40,7 @@ export function reportError(app, event) {
 }
 
 
-export function sendData(app, event, opts) {
+export function sendData(app, event, opts: any = {}) {
   return data => {
     app.ports.fromAlien.send({
       tag: event.tag,
@@ -57,20 +57,18 @@ export function sendData(app, event, opts) {
 // Cache
 // -----
 
-export function removeCache(key) {
-  return db.deleteFromIndex({ key: key })
+export function removeCache(key: string): Promise<void> {
+  return db().removeItem(key)
 }
 
 
-export function fromCache(key) {
-  return db.getFromIndex({ key: key })
+export function fromCache(key: string): Promise<unknown> {
+  return db().getItem(key)
 }
 
 
-export function toCache(key, data) {
-  return db.setInIndex({ key: key, data: data }).then(result => {
-    return result
-  })
+export function toCache(key: string, data: unknown): Promise<unknown> {
+  return db().setItem(key, data)
 }
 
 
@@ -78,11 +76,11 @@ export function toCache(key, data) {
 // Crypto
 // ------
 
-export function decryptIfNeeded(data) {
+export function decryptIfNeeded(data: unknown): Promise<unknown | null> {
   if (typeof data !== "string") {
     return Promise.resolve(data)
 
-  } else if (data.startsWith("{") || data.startsWith("[")) {
+  } else if (typeof data === "string" && (data.startsWith("{") || data.startsWith("["))) {
     return Promise.resolve(data)
 
   } else if (data.length < 15 && Number.isInteger(parseInt(data, 10))) {
@@ -102,9 +100,11 @@ export function decryptIfNeeded(data) {
 
 export async function encryptIfPossible(unencryptedData: string): Promise<string> {
   return unencryptedData
-    ? getSecretKey()
-      .then(secretKey => crypto.encrypt(secretKey, unencryptedData))
-      .catch(_ => unencryptedData)
+    ? getSecretKey().then(secretKey =>
+        secretKey
+          ? crypto.encrypt(secretKey, unencryptedData)
+          : unencryptedData
+      )
     : unencryptedData
 }
 
@@ -112,6 +112,6 @@ export async function encryptIfPossible(unencryptedData: string): Promise<string
 export { encryptIfPossible as encryptWithSecretKey }
 
 
-export function getSecretKey() {
-  return db.getFromIndex({ key: SECRET_KEY_LOCATION })
+export function getSecretKey(): Promise<CryptoKey | null> {
+  return db().getItem(SECRET_KEY_LOCATION)
 }
