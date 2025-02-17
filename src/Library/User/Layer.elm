@@ -30,6 +30,7 @@ import Settings
 import Sources
 import Sources.Encoding as Sources
 import Task exposing (Task)
+import Theme
 import Time
 import Time.Ext as Time
 import Tracks
@@ -42,7 +43,6 @@ import Tracks.Encoding as Tracks
 
 type Method
     = Dropbox { accessToken : String, expiresAt : Int, refreshToken : String }
-    | Fission {}
     | Ipfs { apiOrigin : String }
     | RemoteStorage { userAddress : String, token : String }
 
@@ -50,11 +50,6 @@ type Method
 dropboxMethod : Method
 dropboxMethod =
     Dropbox { accessToken = "", expiresAt = 0, refreshToken = "" }
-
-
-fissionMethod : Method
-fissionMethod =
-    Fission {}
 
 
 ipfsMethod : Method
@@ -84,6 +79,7 @@ type alias EnclosedData =
     , shuffle : Bool
     , sortBy : Tracks.SortBy
     , sortDirection : Tracks.SortDirection
+    , theme : Maybe Theme.Id
     }
 
 
@@ -149,9 +145,6 @@ methodName method =
         Dropbox _ ->
             "Dropbox"
 
-        Fission _ ->
-            "Fission"
-
         Ipfs _ ->
             "IPFS (using MFS)"
 
@@ -170,9 +163,6 @@ methodFromString string =
                     , refreshToken = r
                     }
                 )
-
-        [ "FISSION" ] ->
-            Just (Fission {})
 
         [ "IPFS", a ] ->
             Just (Ipfs { apiOrigin = a })
@@ -195,9 +185,6 @@ methodToString method =
                 , String.fromInt expiresAt
                 , refreshToken
                 ]
-
-        Fission _ ->
-            "FISSION"
 
         Ipfs { apiOrigin } ->
             String.join
@@ -225,9 +212,6 @@ methodSupportsPublicData method =
     case method of
         Dropbox _ ->
             False
-
-        Fission _ ->
-            True
 
         Ipfs _ ->
             False
@@ -260,10 +244,11 @@ enclosedDataDecoder =
         |> optional "shuffle" Json.bool False
         |> optional "sortBy" Tracks.sortByDecoder Tracks.Album
         |> optional "sortDirection" Tracks.sortDirectionDecoder Tracks.Asc
+        |> optional "theme" (Json.maybe Theme.idDecoder) Nothing
 
 
 encodeEnclosedData : EnclosedData -> Json.Value
-encodeEnclosedData { cachedTracks, equalizerSettings, grouping, onlyShowCachedTracks, onlyShowFavourites, repeat, scene, searchTerm, selectedPlaylist, shuffle, sortBy, sortDirection } =
+encodeEnclosedData { cachedTracks, equalizerSettings, grouping, onlyShowCachedTracks, onlyShowFavourites, repeat, scene, searchTerm, selectedPlaylist, shuffle, sortBy, sortDirection, theme } =
     Json.Encode.object
         [ ( "cachedTracks", Json.Encode.list Json.Encode.string cachedTracks )
         , ( "equalizerSettings", Equalizer.encodeSettings equalizerSettings )
@@ -277,6 +262,7 @@ encodeEnclosedData { cachedTracks, equalizerSettings, grouping, onlyShowCachedTr
         , ( "shuffle", Json.Encode.bool shuffle )
         , ( "sortBy", Tracks.encodeSortBy sortBy )
         , ( "sortDirection", Tracks.encodeSortDirection sortDirection )
+        , ( "theme", Maybe.unwrap Json.Encode.null Theme.encodeId theme )
         ]
 
 

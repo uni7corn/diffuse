@@ -4,7 +4,6 @@ import Dict
 import List.Extra as List
 import Time.Ext as Time
 import Tracks exposing (..)
-import Tracks.Favourites as Favourites
 
 
 
@@ -19,7 +18,12 @@ identify ( deps, collection ) =
                 (\fav ( dict, acc ) ->
                     let
                         simpl =
-                            Favourites.simplified fav
+                            case fav.artist of
+                                Just artist ->
+                                    String.toLower artist ++ String.toLower fav.title
+
+                                Nothing ->
+                                    String.toLower fav.title
                     in
                     ( Dict.insert simpl fav dict
                     , simpl :: acc
@@ -130,7 +134,15 @@ partTwo favourites track ( acc, remainingFavourites ) =
 
 isFavourite : Track -> String -> Bool
 isFavourite track =
-    (==) (String.toLower track.tags.artist ++ String.toLower track.tags.title)
+    -- This needs to match the `simplifiedFavourites` format from above
+    (==)
+        (case track.tags.artist of
+            Just artist ->
+                String.toLower artist ++ String.toLower track.tags.title
+
+            Nothing ->
+                String.toLower track.tags.title
+        )
 
 
 makeMissingFavouriteTrack : Favourite -> IdentifiedTrack
@@ -141,7 +153,7 @@ makeMissingFavouriteTrack fav =
             , nr = 0
             , artist = fav.artist
             , title = fav.title
-            , album = Tracks.missingAlbumPlaceholder
+            , album = Nothing
             , genre = Nothing
             , picture = Nothing
             , year = Nothing

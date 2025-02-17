@@ -7,12 +7,13 @@
 
 // @ts-ignore
 import * as TaskPort from "elm-taskport"
-import { APP_INFO, WEBNATIVE_CONFIG } from "../common"
+
+import type { App } from "./elm/types"
 
 import * as crypto from "../crypto"
 
 import { decryptIfNeeded, encryptIfPossible, SECRET_KEY_LOCATION } from "./common"
-import { parseJsonIfNeeded, removeCache, toCache } from "./common"
+import { parseJsonIfNeeded, toCache } from "./common"
 
 
 const ports: Record<string, any> = {}
@@ -68,142 +69,6 @@ taskPorts.toDropbox = async ({ fileName, data, token }) => {
 
 
 
-// Fission
-// -------
-
-let session, wn
-
-
-taskPorts.fromFission = async ({ fileName, includePublicData }) => {
-  await constructFission()
-
-  // Private data
-  const privatePath = wn.path.appData(APP_INFO, wn.path.file(fileName))
-  const privateData = await session.fs.exists(privatePath)
-    ? session.fs.read(privatePath)
-      .then(bytes => new TextDecoder().decode(bytes))
-      .then(parseJsonIfNeeded)
-    : null
-
-  // If public data and working with arrays
-  if (includePublicData && Array.isArray(privateData)) {
-    const publicPath = {
-      file: privatePath.file.map((a: string, idx: number) => {
-        return idx === 0
-          ? "public"
-          : a
-      })
-    }
-
-    const publicData = await session.fs.exists(publicPath)
-      ? session.fs.read(publicPath)
-        .then(bytes => new TextDecoder().decode(bytes))
-        .then(parseJsonIfNeeded)
-      : null
-
-    return publicData
-      ? [ ...privateData, ...publicData ]
-      : privateData
-
-    // Otherwise
-  } else {
-    return privateData
-
-  }
-}
-
-
-taskPorts.toFission = async ({ data, fileName, savePublicData }) => {
-  await constructFission()
-
-  // Data identifying
-  const privatePath = wn.path.appData(APP_INFO, wn.path.file(fileName))
-  const isDataObject = typeof data === "object" && !!data.data
-
-  if (!isDataObject) {
-    await session.fs.write(
-      privatePath,
-      new TextEncoder().encode(JSON.stringify(data))
-    )
-
-    await session.fs.publish()
-
-    return
-  }
-
-  // Group data
-  const [ privateData, publicData ] = Array.isArray(data.data) && savePublicData
-    ? data.data.reduce(
-      ([ priv, pub ], item) => {
-        return item.public
-          ? [ priv, [ ...pub, item ] ]
-          : [ [ ...priv, item ], pub ]
-      },
-      [ [], [] ]
-    )
-    : [ data.data, null ]
-
-  // Private data
-  await session.fs.write(
-    privatePath,
-    new TextEncoder().encode(JSON.stringify({ ...data, data: privateData }))
-  )
-
-  // Public data
-  if (publicData) {
-    const publicPath = {
-      file: privatePath.file.map((a: string, idx: number) => {
-        return idx === 0
-          ? "public"
-          : a
-      })
-    }
-
-    await session.fs.write(
-      publicPath,
-      new TextEncoder().encode(JSON.stringify({ ...data, data: publicData }))
-    )
-  }
-
-  // Publish
-  await session.fs.publish()
-}
-
-
-async function constructFission() {
-  if (session) return Promise.resolve()
-
-  importScripts("vendor/webnative.min.js")
-
-  wn = (self as any).webnative
-
-  const program = await wn.program({
-    ...WEBNATIVE_CONFIG,
-    fileSystem: { loadImmediately: false }
-  })
-
-  session = program.session
-
-  if (!session) {
-    await removeCache("SYNC_METHOD")
-    location.reload()
-    throw new Error("Failed to load Webnative session")
-  }
-
-  session.fs = await program.fileSystem.load(session.username)
-  if (!session.fs) throw new Error("Did not load Webnative file system")
-}
-
-
-ports.deconstructFission = _app => _ => {
-  if (!session) return
-  session.destroy()
-  session = undefined
-  wn = undefined
-}
-
-
-
 // IPFS
 // ----
 
@@ -252,11 +117,11 @@ let rs
 let rsClient
 
 
-function remoteStorage(userAddress: string, token: string) {
+async function remoteStorage(userAddress: string, token: string) {
   if (!rs) {
-    importScripts("vendor/remotestorage.min.js")
+    const { default: RemoteStorage } = await import("remotestoragejs")
 
-    rs = new (self as any).RemoteStorage({ cache: false })
+    rs = new RemoteStorage({ cache: false })
     rs.access.claim("diffuse", "rw")
 
     rsClient = rs.scope("/diffuse/")
@@ -301,16 +166,20 @@ taskPorts.toRemoteStorage = ({ data, fileName, userAddress, token }) => {
 // EXPORT
 // ======
 
-export function setupPorts(app) {
+function registerPorts(app: App) {
   Object.keys(ports).forEach(name => {
     const fn = ports[ name ](app)
     app.ports[ name ].subscribe(fn)
   })
 }
 
-export function setupTaskPorts() {
+function registerTaskPorts() {
   Object.keys(taskPorts).forEach(name => {
     const fn = taskPorts[ name ]
     TaskPort.register(name, fn)
   })
 }
+
+
+export const TaskPorts = { register: registerTaskPorts }
+export const Ports = { register: registerPorts }
